@@ -8,7 +8,7 @@ Yapılacaklar:
 - [x] Sınavların listesinin alınabilmesi.
 - [ ] Ders seçimi.
 - [ ] Not kartının çekilmesi.
-- [ ] Yemek listesinin çekilmesi.
+- [x] Yemek listesinin çekilmesi.
 - [ ] Ders programının çekilmesi.
 - [ ] Daha temiz bir yapı/mimari kurulması.
 - [ ] Bbolt yerine pebble/badger kullanmak (TTL ile).
@@ -20,4 +20,4 @@ Yapılacaklar:
 - [ ] Daha düzgün bir error handling.
 - [ ] Daha düzgün bir config yapısı.
 - [ ] Sınav takvimi.
-- [ ] Kişisel bilgiler.
+- [x] Kişisel bilgiler.

@@ -33,6 +33,30 @@ type UserLoginSuccess struct {
 	Message             string `json:"message"`
 }
 
+type Refactory struct {
+	YmkTuru string `json:"ymk_turu"`
+	Yil     string `json:"yil"`
+	Gun     int    `json:"gun"`
+	Ogle    string `json:"ogle"`
+	Okalori string `json:"okalori"`
+	Aksam   string `json:"aksam"`
+	Akalori string `json:"akalori"`
+}
+
+type StudentDepartment struct {
+	DepartmentName     string `json:"birimAdi"`
+	DepartmentYear     string `json:"sinifi"`
+	DepartmentSemester string `json:"donem"`
+	StudentID          string `json:"ogrenciNo"`
+}
+
+type Profile struct {
+	Name        string              `json:"ad"`
+	Surname     string              `json:"soyad"`
+	Nationality string              `json:"uyruk"`
+	Departments []StudentDepartment `json:"ogrenciBirimBilgileriListe"`
+}
+
 func NewUludagFetcher() *UludagFetcher {
 	return &UludagFetcher{
 		client: &http.Client{
@@ -48,8 +72,13 @@ func NewUludagFetcher() *UludagFetcher {
 	}
 }
 
-func (u *UludagFetcher) sendRequest(endpoint string, student Student) (string, error) {
-	req, err := http.NewRequest("GET", "https://mobileservicev2.uludag.edu.tr/"+endpoint, nil)
+func (u *UludagFetcher) sendRequest(endpoint string, student Student, alternativeURL ...string) (string, error) {
+	url := "https://mobileservicev2.uludag.edu.tr/"
+	if len(alternativeURL) > 0 {
+		url = alternativeURL[0]
+	}
+
+	req, err := http.NewRequest("GET", url+endpoint, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -123,6 +152,20 @@ func (u *UludagFetcher) CheckStudentToken(student Student) (bool, error) {
 	return true, nil
 }
 
+func (u *UludagFetcher) GetStudentInfo(student Student) (Profile, error) {
+	body, err := u.sendRequest("student/studentinfo", student)
+	if err != nil {
+		return Profile{}, err
+	}
+
+	var profile Profile
+	if err := json.Unmarshal([]byte(body), &profile); err != nil {
+		return Profile{}, err
+	}
+
+	return profile, nil
+}
+
 func (u *UludagFetcher) GetExamResults(student Student) ([]ExamResult, error) {
 	body, err := u.sendRequest("student/examresults", student)
 	if err != nil {
@@ -135,4 +178,18 @@ func (u *UludagFetcher) GetExamResults(student Student) ([]ExamResult, error) {
 	}
 
 	return results, nil
+}
+
+func (u *UludagFetcher) GetRefactoryList() (Refactory, error) {
+	body, err := u.sendRequest("yemek/std", Student{}, "https://anasayfaws.uludag.edu.tr/")
+	if err != nil {
+		return Refactory{}, err
+	}
+
+	var refactory Refactory
+	if err := json.Unmarshal([]byte(body), &refactory); err != nil {
+		return Refactory{}, err
+	}
+
+	return refactory, nil
 }

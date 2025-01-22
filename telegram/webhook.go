@@ -138,7 +138,13 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			"/login: Botu aktif hâle getirir.\n" +
 			"/logout: Botu pasif hâle getirir.\n" +
 			"/sinavlar: Sınav sonuçlarını gösterir.\n" +
+			"/yemekhane: Günün Yemekhane menüsünü gösterir.\n" +
+			"/profil: Öğrenci bilgilerini gösterir.\n" +
 			"/help: Yardım menüsünü gösterir."
+	case "/yemekhane":
+		respond = s.GetTodaysRefactoryMenu()
+	case "/profil":
+		respond = s.GetStudentInfo(chatID)
 	default:
 		respond = s.handleReplies(update.Message)
 	}
@@ -170,6 +176,82 @@ func (s *Server) Start() {
 
 func (s *Server) Stop(ctx context.Context) {
 	s.server.Shutdown(ctx)
+}
+
+func (s *Server) GetStudentInfo(chatID string) string {
+	var respond string
+	user, err := s.database.GetUser(chatID)
+	if err != nil {
+		return "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+
+	}
+
+	student := otomasyon.Student{
+		StudentID:           user.StudentID,
+		StudentSessionToken: user.StudentSessionToken,
+	}
+
+	profile, err := s.fetcher.GetStudentInfo(student)
+	if err != nil {
+		return "Öğrenci bilgileri alınırken bir hata oluştu."
+	}
+
+	respond = "*Kişisel Bilgiler*\n\n"
+	respond += "*Öğrenci Ad - Soyad:* " + profile.Name + " " + profile.Surname + "\n"
+	respond += "*Öğrenci Uyruğu:* " + profile.Nationality + "\n"
+	respond += "*Bölümler:*\n"
+
+	for _, department := range profile.Departments {
+		respond += "  - Numara: *" + department.StudentID + "*, Bölüm: " + department.DepartmentName + ", " + department.DepartmentYear + ". yıl " + department.DepartmentSemester + ". dönem" + "\n"
+	}
+
+	return respond
+}
+
+func (s *Server) GetTodaysRefactoryMenu() string {
+	var respond string
+
+	refactory, err := s.fetcher.GetRefactoryList()
+	if err != nil {
+		respond = "Yemekhane menüsü alınırken bir hata oluştu."
+		return respond
+	}
+
+	respond = "*Günün Yemekhane Menüsü*\n\n"
+	respond += "*Öğle Yemeği:*\n"
+
+	lunch_calories := strings.Split(refactory.Okalori, "\n")
+	lunch_menu := strings.Split(refactory.Ogle, "\n")
+	for i, menu := range lunch_menu {
+		if menu == "" {
+			continue
+		}
+
+		calory := "-"
+		if i < len(lunch_calories) {
+			calory = lunch_calories[i]
+		}
+		respond += menu + ": _" + calory + " kalori_" + "\n"
+	}
+
+	respond += "\n*Akşam Yemeği:*\n"
+
+	dinner_calories := strings.Split(refactory.Akalori, "\n")
+	dinner_menu := strings.Split(refactory.Aksam, "\n")
+
+	for i, menu := range dinner_menu {
+		if menu == "" {
+			continue
+		}
+
+		calory := "-"
+		if i < len(dinner_calories) {
+			calory = dinner_calories[i]
+		}
+		respond += menu + ": _" + calory + " kalori_" + "\n"
+	}
+
+	return respond
 }
 
 func (s *Server) handleReplies(message Message) string {
