@@ -145,6 +145,26 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		respond = s.GetTodaysRefactoryMenu()
 	case "/profil":
 		respond = s.GetStudentInfo(chatID)
+	case "/notkarti":
+		user, err := s.database.GetUser(chatID)
+		if err != nil {
+			respond = "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+			break
+		}
+
+		student := otomasyon.Student{
+			StudentID:           user.StudentID,
+			StudentSessionToken: user.StudentSessionToken,
+		}
+
+		// Check token
+		ok, err := s.fetcher.CheckStudentToken(student)
+		if !ok || err != nil {
+			respond = "Token geçersiz. Giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+			break
+		}
+
+		respond = s.getGradeCard(student)
 	default:
 		respond = s.handleReplies(update.Message)
 	}
@@ -176,6 +196,41 @@ func (s *Server) Start() {
 
 func (s *Server) Stop(ctx context.Context) {
 	s.server.Shutdown(ctx)
+}
+
+func (s *Server) getGradeCard(student otomasyon.Student) string {
+	var respond string
+
+	results, err := s.fetcher.GetStudentBranches(student)
+	if err != nil {
+		return "Öğrencinin bölünleri getirilirken bilinmeyen bir hata meydana geldi!"
+	}
+
+	for i, result := range results {
+		student.Branch = result.DepartmentID
+		respond += "*" + result.DepartmentName + ":*\n\n"
+		semesters, err := s.fetcher.GetGradeCard(student)
+		if err != nil {
+			return "Not kartı çekilirken bilinmeyen bir hata oluştu!"
+		}
+
+		for _, semester := range semesters {
+			respond += "*Dönem: " + semester.SemesterName + "\nDönem Kredisi: " + semester.SemesterECTS + " - Toplam Kredi: " + semester.TotalECTS + "*\n"
+			respond += "ANO: " + semester.SemesterANO + " GANO: " + semester.GANO + "\n"
+
+			respond += "*Harf Notları:*\n"
+			for _, grade := range semester.Grades {
+				respond += "- " + grade.CourseName + ": " + grade.Grade + " (" + grade.ECTS + " kredi)\n"
+			}
+			respond += "\n"
+		}
+
+		if i != len(results)-1 {
+			respond += "\n"
+		}
+	}
+
+	return respond
 }
 
 func (s *Server) GetStudentInfo(chatID string) string {

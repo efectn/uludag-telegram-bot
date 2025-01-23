@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -12,6 +13,7 @@ import (
 type Student struct {
 	StudentID           string `json:"studentID"`
 	StudentSessionToken string `json:"studentSessionToken"`
+	Branch              int    `json:"branch"`
 }
 
 type UludagFetcher struct {
@@ -57,6 +59,28 @@ type Profile struct {
 	Departments []StudentDepartment `json:"ogrenciBirimBilgileriListe"`
 }
 
+type StudentBranch struct {
+	DepartmentID   int    `json:"birimID"`
+	DepartmentName string `json:"birimAdi"`
+}
+
+type Grade struct {
+	CourseCode string `json:"dersKodu"`
+	CourseName string `json:"dersAdi"`
+	ECTS       string `json:"kredi"`
+	Grade      string `json:"bNot"`
+}
+
+type SemesterGrades struct {
+	SemesterID   int     `json:"donemID"`
+	SemesterName string  `json:"donemAdi"`
+	SemesterECTS string  `json:"yariYilKredi"`
+	SemesterANO  string  `json:"yariYilAno"`
+	TotalECTS    string  `json:"genelKredi"`
+	GANO         string  `json:"genelAno"`
+	Grades       []Grade `json:"ogrenciNotListe"`
+}
+
 func NewUludagFetcher() *UludagFetcher {
 	return &UludagFetcher{
 		client: &http.Client{
@@ -86,6 +110,10 @@ func (u *UludagFetcher) sendRequest(endpoint string, student Student, alternativ
 	req.Header.Set("User-Agent", "Dart/3.0 (dart:io)")
 	req.Header.Set("student_session_token", student.StudentSessionToken)
 	req.Header.Set("studentid", student.StudentID)
+
+	if student.Branch != 0 {
+		req.Header.Set("branch", strconv.Itoa(student.Branch))
+	}
 
 	resp, err := u.client.Do(req)
 	if err != nil {
@@ -164,6 +192,34 @@ func (u *UludagFetcher) GetStudentInfo(student Student) (Profile, error) {
 	}
 
 	return profile, nil
+}
+
+func (u *UludagFetcher) GetStudentBranches(student Student) ([]StudentBranch, error) {
+	body, err := u.sendRequest("student/studentbranches", student)
+	if err != nil {
+		return nil, err
+	}
+
+	var branches []StudentBranch
+	if err := json.Unmarshal([]byte(body), &branches); err != nil {
+		return nil, err
+	}
+
+	return branches, nil
+}
+
+func (u *UludagFetcher) GetGradeCard(student Student) ([]SemesterGrades, error) {
+	body, err := u.sendRequest("student/gradecard", student)
+	if err != nil {
+		return nil, err
+	}
+
+	var semesterGrades []SemesterGrades
+	if err := json.Unmarshal([]byte(body), &semesterGrades); err != nil {
+		return nil, err
+	}
+
+	return semesterGrades, nil
 }
 
 func (u *UludagFetcher) GetExamResults(student Student) ([]ExamResult, error) {
