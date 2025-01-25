@@ -21,12 +21,12 @@ type UludagFetcher struct {
 }
 
 type ExamResult struct {
-	ExamID     int    `json:"sinavID"`
-	ExamName   string `json:"sinavAdi"`
-	ExamDate   string `json:"tarih"`
-	ExamType   string `json:"sinavTipi"`
-	ExamTypeID int    `json:"sinavTipiID"`
-	ExamGrade  int    `json:"sinavNotu"`
+	ExamID     int     `json:"sinavID"`
+	ExamName   string  `json:"sinavAdi"`
+	ExamDate   string  `json:"tarih"`
+	ExamType   string  `json:"sinavTipi"`
+	ExamTypeID int     `json:"sinavTipiID"`
+	ExamGrade  float64 `json:"sinavNotu"`
 }
 
 type UserLoginSuccess struct {
@@ -79,6 +79,14 @@ type SemesterGrades struct {
 	TotalECTS    string  `json:"genelKredi"`
 	GANO         string  `json:"genelAno"`
 	Grades       []Grade `json:"ogrenciNotListe"`
+}
+
+type SyllabusEntry struct {
+	Day        int    `json:"gun"`
+	Exists     int    `json:"dolu"`
+	CourseCode string `json:"dersKodu"`
+	Hours      string `json:"saatler"`
+	ClassCode  string `json:"derslikKodu"`
 }
 
 func NewUludagFetcher() *UludagFetcher {
@@ -220,6 +228,21 @@ func (u *UludagFetcher) GetGradeCard(student Student) ([]SemesterGrades, error) 
 	}
 
 	return semesterGrades, nil
+}
+
+func (u *UludagFetcher) GetSyllabus(student Student) ([]SyllabusEntry, error) {
+	body, err := u.sendRequest("student/syllabus", student)
+	if err != nil {
+		return nil, err
+	}
+
+	var syllabus []SyllabusEntry
+
+	if err := json.Unmarshal([]byte(body), &syllabus); err != nil {
+		return nil, err
+	}
+
+	return syllabus, nil
 }
 
 func (u *UludagFetcher) GetExamResults(student Student) ([]ExamResult, error) {

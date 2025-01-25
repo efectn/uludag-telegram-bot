@@ -130,7 +130,7 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		respond = "*Sınav Sonuçları*\n"
 		for _, result := range results {
-			respond += fmt.Sprintf("*%s*: %d\n\n", result.ExamName, result.ExamGrade)
+			respond += fmt.Sprintf("*%s*: %.2f\n\n", result.ExamName, result.ExamGrade)
 		}
 	case "/help":
 		respond = "Bot komutları:\n\n" +
@@ -140,31 +140,29 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			"/sinavlar: Sınav sonuçlarını gösterir.\n" +
 			"/yemekhane: Günün Yemekhane menüsünü gösterir.\n" +
 			"/profil: Öğrenci bilgilerini gösterir.\n" +
+			"/notkarti: Not kartını gösterir.\n" +
+			"/dersprogrami: Ders programını gösterir.\n" +
 			"/help: Yardım menüsünü gösterir."
 	case "/yemekhane":
 		respond = s.GetTodaysRefactoryMenu()
 	case "/profil":
 		respond = s.GetStudentInfo(chatID)
 	case "/notkarti":
-		user, err := s.database.GetUser(chatID)
-		if err != nil {
-			respond = "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+		student, output := s.getStudent(chatID)
+		if student == nil && output != "" {
+			respond = output
 			break
 		}
 
-		student := otomasyon.Student{
-			StudentID:           user.StudentID,
-			StudentSessionToken: user.StudentSessionToken,
-		}
-
-		// Check token
-		ok, err := s.fetcher.CheckStudentToken(student)
-		if !ok || err != nil {
-			respond = "Token geçersiz. Giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+		respond = s.getGradeCard(*student)
+	case "/dersprogrami":
+		student, output := s.getStudent(chatID)
+		if student == nil && output != "" {
+			respond = output
 			break
 		}
 
-		respond = s.getGradeCard(student)
+		respond = s.getSyllabus(*student)
 	default:
 		respond = s.handleReplies(update.Message)
 	}
@@ -196,6 +194,60 @@ func (s *Server) Start() {
 
 func (s *Server) Stop(ctx context.Context) {
 	s.server.Shutdown(ctx)
+}
+
+func (s *Server) getStudent(chatID string) (*otomasyon.Student, string) {
+	user, err := s.database.GetUser(chatID)
+	if err != nil {
+		return nil, "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+	}
+
+	student := otomasyon.Student{
+		StudentID:           user.StudentID,
+		StudentSessionToken: user.StudentSessionToken,
+	}
+
+	// Check token
+	ok, err := s.fetcher.CheckStudentToken(student)
+	if !ok || err != nil {
+		return nil, "Token geçersiz. Giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+	}
+
+	return &student, ""
+}
+
+func (s *Server) getSyllabus(student otomasyon.Student) string {
+	var respond string
+	entries, err := s.fetcher.GetSyllabus(student)
+	if err != nil {
+		return "Ders programı alınırken bir hata oluştu."
+
+	}
+
+	respond = "*Ders Programı*\n\n"
+
+	days := []string{"Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma"}
+	for i, day := range days {
+		dayEntries := make([]otomasyon.SyllabusEntry, 0, len(entries))
+		for _, entry := range entries {
+			if entry.Day == i+1 && entry.Exists == 1 {
+				dayEntries = append(dayEntries, entry)
+			}
+		}
+
+		// Skip if there is no entry for that day
+		if len(dayEntries) == 0 {
+			continue
+		}
+
+		respond += "*" + day + "*\n"
+		for _, entry := range dayEntries {
+			respond += entry.ClassCode + " - " + entry.Hours + "\n"
+		}
+		respond += "\n"
+	}
+
+	return respond
 }
 
 func (s *Server) getGradeCard(student otomasyon.Student) string {

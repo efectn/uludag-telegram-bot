@@ -7,7 +7,7 @@ Yapılacaklar:
     - [ ] Daha optimize bir çözüm bulmak.
 - [x] Sınavların listesinin alınabilmesi.
 - [x] Yemek listesinin çekilmesi.
-- [ ] Ders programının çekilmesi.
+- [x] Ders programının çekilmesi.
 - [ ] Sınav takvimi.
 - [x] Kişisel bilgiler.
 - [x] Not kartının çekilmesi.
