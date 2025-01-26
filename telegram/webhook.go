@@ -4,26 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"uludag/database"
 	"uludag/otomasyon"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Server struct {
-	TelegramToken string `json:"telegram_token"`
-	Port          string `json:"port"`
-	botID         string
 	server        *http.Server
 	bot           *TelegramBot
 	fetcher       *otomasyon.UludagFetcher
 	database      *database.Database
+	TelegramToken string
+	Port          string
+	botID         string
 }
 
+// Telegram types
 type Chat struct {
-	ID       int    `json:"id"`
 	Username string `json:"username"`
+	ID       int    `json:"id"`
 }
 
 type MessageEntity struct {
@@ -33,26 +37,24 @@ type MessageEntity struct {
 }
 
 type User struct {
-	ID        int    `json:"id"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`
+	ID        int    `json:"id"`
 	IsBot     bool   `json:"is_bot"`
 }
 
 type Message struct {
-	Chat           Chat            `json:"chat"`
-	From           User            `json:"from"`
 	ReplyToMessage *Message        `json:"reply_to_message"`
-	Entities       []MessageEntity `json:"entities"`
+	Chat           Chat            `json:"chat"`
 	Text           string          `json:"text"`
+	From           User            `json:"from"`
+	Entities       []MessageEntity `json:"entities"`
 }
 
 type Update struct {
 	Message Message `json:"message"`
 }
-
-const msg1 = "Lütfen bu mesajı yanıtlayarak öğrenci numaranızı ve şifrenizi boşluk bırakarak girin."
 
 func NewServer(token string, port string, bot *TelegramBot, fetcher *otomasyon.UludagFetcher, database *database.Database, botID string) *Server {
 	return &Server{
@@ -70,10 +72,15 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse the request body
 	var update Update
 
-	bodyContent := make([]byte, r.ContentLength)
-	r.Body.Read(bodyContent)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read request body")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
-	if err := json.Unmarshal(bodyContent, &update); err != nil {
+	if err := json.Unmarshal(body, &update); err != nil {
+		log.Error().Err(err).Msg("Failed to unmarshal request body")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -97,16 +104,17 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 	case "/start":
 		respond = "Merhaba, " + username + "! Bot'a hoşgeldin. Botu aktif hâle getirmek için /login komutunu kullanabilirsin."
 	case "/login":
-		respond = msg1
+		respond = LoginReplyMessage
 		isForceReply = true
 	case "/logout":
 		err := s.database.DeleteUser(chatID)
 		if err != nil {
-			respond = "Çıkış yapılırken bir hata oluştu."
+			log.Error().Err(err).Msg("Failed to delete user")
+			respond = LogoutErrorMessage
 			break
 		}
 
-		respond = "Başarıyla çıkış yapıldı\\!"
+		respond = LogoutSuccessMessage
 	case "/sinavlar":
 		student, output := s.getStudent(chatID)
 		if student == nil && output != "" {
@@ -116,7 +124,7 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		results, err := s.fetcher.GetExamResults(*student)
 		if err != nil {
-			respond = "Sınav sonuçları alınırken bir hata oluştu."
+			respond = ExamResultsErrorMessage
 			break
 		}
 
@@ -124,22 +132,16 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		for _, result := range results {
 			respond += fmt.Sprintf("*%s*: %.2f\n\n", result.ExamName, result.ExamGrade)
 		}
-	case "/help":
-		respond = "Bot komutları:\n\n" +
-			"/start: Botu başlatır.\n" +
-			"/login: Botu aktif hâle getirir.\n" +
-			"/logout: Botu pasif hâle getirir.\n" +
-			"/sinavlar: Sınav sonuçlarını gösterir.\n" +
-			"/yemekhane: Günün Yemekhane menüsünü gösterir.\n" +
-			"/profil: Öğrenci bilgilerini gösterir.\n" +
-			"/notkarti: Not kartını gösterir.\n" +
-			"/dersprogrami: Ders programını gösterir.\n" +
-			"/sinavprogrami: Sınav programını gösterir.\n" +
-			"/help: Yardım menüsünü gösterir."
 	case "/yemekhane":
 		respond = s.GetTodaysRefactoryMenu()
 	case "/profil":
-		respond = s.GetStudentInfo(chatID)
+		student, output := s.getStudent(chatID)
+		if student == nil && output != "" {
+			respond = output
+			break
+		}
+
+		respond = s.GetStudentInfo(*student)
 	case "/notkarti":
 		student, output := s.getStudent(chatID)
 		if student == nil && output != "" {
@@ -164,12 +166,19 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		respond = s.GetExamSchedule(*student)
+	case "/help":
+		respond = HelpMessage
 	default:
 		respond = s.handleReplies(update.Message)
 	}
 
+	// Check empty response
+	if respond == "" {
+		respond = UnknownErrorMessage
+	}
+
 	// Send the response
-	err := s.bot.SendMessage(MessageOptions{
+	if err = s.bot.SendMessage(MessageOptions{
 		ChatID:    chatID,
 		Text:      respond,
 		ParseMode: "markdown",
@@ -177,9 +186,8 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			ForceReply: isForceReply,
 			Selective:  false,
 		},
-	})
-
-	if err != nil {
+	}); err != nil {
+		log.Error().Err(err).Msg("Failed to send message")
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
@@ -190,11 +198,17 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Start() {
 	http.HandleFunc("/webhook", s.webhookHandler)
 	s.server.Addr = ":" + s.Port
-	s.server.ListenAndServe()
+
+	log.Info().Msg("Starting server on port " + s.Port)
+	if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatal().Err(err).Msg("Failed to start server")
+	}
 }
 
 func (s *Server) Stop(ctx context.Context) {
-	s.server.Shutdown(ctx)
+	if err := s.server.Shutdown(ctx); err != nil {
+		log.Fatal().Err(err).Msg("Failed to shutdown server")
+	}
 }
 
 func (s *Server) GetExamSchedule(student otomasyon.Student) string {
@@ -202,7 +216,8 @@ func (s *Server) GetExamSchedule(student otomasyon.Student) string {
 
 	exams, err := s.fetcher.GetExamSchedule(student)
 	if err != nil {
-		return "Sınav programı alınırken bir hata oluştu."
+		log.Error().Err(err).Msg("Failed to fetch exam schedule")
+		return ExamScheduleErrorMessage
 	}
 
 	examIDs := []int{2, 3, 4, 10}
@@ -235,7 +250,8 @@ func (s *Server) GetExamSchedule(student otomasyon.Student) string {
 func (s *Server) getStudent(chatID string) (*otomasyon.Student, string) {
 	user, err := s.database.GetUser(chatID)
 	if err != nil {
-		return nil, "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+		log.Error().Err(err).Msg("Failed to fetch user")
+		return nil, NotLoggedInMessage
 	}
 
 	student := otomasyon.Student{
@@ -246,7 +262,7 @@ func (s *Server) getStudent(chatID string) (*otomasyon.Student, string) {
 	// Check token
 	ok, err := s.fetcher.CheckStudentToken(student)
 	if !ok || err != nil {
-		return nil, "Token geçersiz. Giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+		return nil, TokenErrorMessage
 	}
 
 	return &student, ""
@@ -256,7 +272,8 @@ func (s *Server) getSyllabus(student otomasyon.Student) string {
 	var respond string
 	entries, err := s.fetcher.GetSyllabus(student)
 	if err != nil {
-		return "Ders programı alınırken bir hata oluştu."
+		log.Error().Err(err).Msg("Failed to fetch syllabus")
+		return SyllabusErrorMessage
 
 	}
 
@@ -291,7 +308,8 @@ func (s *Server) getGradeCard(student otomasyon.Student) string {
 
 	results, err := s.fetcher.GetStudentBranches(student)
 	if err != nil {
-		return "Öğrencinin bölünleri getirilirken bilinmeyen bir hata meydana geldi!"
+		log.Error().Err(err).Msg("Failed to fetch student branches")
+		return StudentBranchesErrorMessage
 	}
 
 	for i, result := range results {
@@ -299,7 +317,7 @@ func (s *Server) getGradeCard(student otomasyon.Student) string {
 		respond += "*" + result.DepartmentName + ":*\n\n"
 		semesters, err := s.fetcher.GetGradeCard(student)
 		if err != nil {
-			return "Not kartı çekilirken bilinmeyen bir hata oluştu!"
+			return GradeCardErrorMessage
 		}
 
 		for _, semester := range semesters {
@@ -321,22 +339,13 @@ func (s *Server) getGradeCard(student otomasyon.Student) string {
 	return respond
 }
 
-func (s *Server) GetStudentInfo(chatID string) string {
+func (s *Server) GetStudentInfo(student otomasyon.Student) string {
 	var respond string
-	user, err := s.database.GetUser(chatID)
-	if err != nil {
-		return "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
-
-	}
-
-	student := otomasyon.Student{
-		StudentID:           user.StudentID,
-		StudentSessionToken: user.StudentSessionToken,
-	}
 
 	profile, err := s.fetcher.GetStudentInfo(student)
 	if err != nil {
-		return "Öğrenci bilgileri alınırken bir hata oluştu."
+		log.Error().Err(err).Msg("Failed to fetch student info")
+		return StudentInfoErrorMessage
 	}
 
 	respond = "*Kişisel Bilgiler*\n\n"
@@ -356,8 +365,8 @@ func (s *Server) GetTodaysRefactoryMenu() string {
 
 	refactory, err := s.fetcher.GetRefactoryList()
 	if err != nil {
-		respond = "Yemekhane menüsü alınırken bir hata oluştu."
-		return respond
+		log.Error().Err(err).Msg("Failed to fetch refactory list")
+		return RefactoryMenuErrorMessage
 	}
 
 	respond = "*Günün Yemekhane Menüsü*\n\n"
@@ -400,6 +409,7 @@ func (s *Server) GetTodaysRefactoryMenu() string {
 func (s *Server) handleReplies(message Message) string {
 	chatID := strconv.Itoa(message.Chat.ID)
 	repliedTo := message.ReplyToMessage
+
 	if repliedTo != nil {
 		// Check if it is login message
 		id, err := strconv.Atoi(s.botID)
@@ -407,14 +417,15 @@ func (s *Server) handleReplies(message Message) string {
 			return ""
 		}
 
-		if repliedTo.From.ID != id && repliedTo.Text != msg1 {
+		if repliedTo.From.ID != id || repliedTo.Text != LoginReplyMessage {
 			return ""
 		}
 
 		// Check if already logged in
 		_, err = s.database.GetUser(chatID)
 		if err == nil {
-			return "Zaten giriş yapmışsınız. Çıkış yapmak için /logout komutunu kullanabilirsiniz."
+			log.Error().Err(err).Msg("User already logged in")
+			return AlreadyLoggedInMessage
 		}
 
 		username, password, found := strings.Cut(message.Text, " ")
@@ -424,12 +435,13 @@ func (s *Server) handleReplies(message Message) string {
 
 		token, ok, err := s.fetcher.StudentLogin(username, password)
 		if !ok || err != nil {
-			return "Giriş başarısız. Lütfen /login komutunu girerek tekrar deneyin."
+			log.Error().Err(err).Msg("Failed to login")
+			return LoginErrorMessage
 		}
 
 		err = s.database.DeleteUser(chatID)
 		if err != nil {
-			return "Giriş başarısız. Lütfen /login komutunu girerek tekrar deneyin."
+			return LoginErrorMessage
 		}
 
 		err = s.database.SaveUser(database.User{
@@ -438,11 +450,12 @@ func (s *Server) handleReplies(message Message) string {
 			StudentSessionToken: token,
 		})
 		if err != nil {
-			return "Giriş başarısız. Lütfen /login komutunu girerek tekrar deneyin."
+			log.Error().Err(err).Msg("Failed to save user")
+			return LoginErrorMessage
 		}
 
-		return "Başarıyla giriş yaptınız. Artık sınavlarınızı görebilirsiniz. Çıkış yapmak için /logout komutunu kullanabilirsiniz."
+		return LoginSuccessMessage
 	}
 
-	return "Bilinmeyen komut. Komutları listelemek için /help kullanabilirsin."
+	return UnknownCommandMessage
 }

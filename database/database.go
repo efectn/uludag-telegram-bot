@@ -7,6 +7,8 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+var ErrUserNotFound = errors.New("user not found")
+
 type User struct {
 	ChatID              string `json:"chat_id"`
 	StudentID           string `json:"student_id"`
@@ -64,7 +66,7 @@ func (d *Database) GetUser(chatID string) (User, error) {
 		bucket := tx.Bucket([]byte("users"))
 		data := bucket.Get([]byte(chatID))
 		if data == nil {
-			return errors.New("user not found")
+			return ErrUserNotFound
 		}
 
 		err := json.Unmarshal(data, &user)
@@ -114,6 +116,6 @@ func (d *Database) DeleteUser(chatID string) error {
 	return err
 }
 
-func (d *Database) Close() {
-	d.db.Close()
+func (d *Database) Close() error {
+	return d.db.Close()
 }

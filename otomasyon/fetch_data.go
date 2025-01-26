@@ -20,83 +20,7 @@ type UludagFetcher struct {
 	client *http.Client
 }
 
-type ExamResult struct {
-	ExamID     int     `json:"sinavID"`
-	ExamName   string  `json:"sinavAdi"`
-	ExamDate   string  `json:"tarih"`
-	ExamType   string  `json:"sinavTipi"`
-	ExamTypeID int     `json:"sinavTipiID"`
-	ExamGrade  float64 `json:"sinavNotu"`
-}
-
-type UserLoginSuccess struct {
-	StudentID           string `json:"studentID"`
-	StudentSessionToken string `json:"studentSessionToken"`
-	Message             string `json:"message"`
-}
-
-type Refactory struct {
-	YmkTuru string `json:"ymk_turu"`
-	Yil     string `json:"yil"`
-	Gun     int    `json:"gun"`
-	Ogle    string `json:"ogle"`
-	Okalori string `json:"okalori"`
-	Aksam   string `json:"aksam"`
-	Akalori string `json:"akalori"`
-}
-
-type StudentDepartment struct {
-	DepartmentName     string `json:"birimAdi"`
-	DepartmentYear     string `json:"sinifi"`
-	DepartmentSemester string `json:"donem"`
-	StudentID          string `json:"ogrenciNo"`
-}
-
-type Profile struct {
-	Name        string              `json:"ad"`
-	Surname     string              `json:"soyad"`
-	Nationality string              `json:"uyruk"`
-	Departments []StudentDepartment `json:"ogrenciBirimBilgileriListe"`
-}
-
-type StudentBranch struct {
-	DepartmentID   int    `json:"birimID"`
-	DepartmentName string `json:"birimAdi"`
-}
-
-type Grade struct {
-	CourseCode string `json:"dersKodu"`
-	CourseName string `json:"dersAdi"`
-	ECTS       string `json:"kredi"`
-	Grade      string `json:"bNot"`
-}
-
-type SemesterGrades struct {
-	SemesterID   int     `json:"donemID"`
-	SemesterName string  `json:"donemAdi"`
-	SemesterECTS string  `json:"yariYilKredi"`
-	SemesterANO  string  `json:"yariYilAno"`
-	TotalECTS    string  `json:"genelKredi"`
-	GANO         string  `json:"genelAno"`
-	Grades       []Grade `json:"ogrenciNotListe"`
-}
-
-type SyllabusEntry struct {
-	Day        int    `json:"gun"`
-	Exists     int    `json:"dolu"`
-	CourseCode string `json:"dersKodu"`
-	Hours      string `json:"saatler"`
-	ClassCode  string `json:"derslikKodu"`
-}
-
-type Exam struct {
-	ExamName     string `json:"sinavAdi"`
-	ExamDate     string `json:"tarih"`
-	ExamType     string `json:"sinavTipi"`
-	ExamTypeID   int    `json:"sinavTipiID"`
-	ExamTime     string `json:"sinavSaati"`
-	ExamDuration string `json:"sinavSure"`
-}
+const UludagMobileAPI = "https://mobileservicev2.uludag.edu.tr/"
 
 func NewUludagFetcher() *UludagFetcher {
 	return &UludagFetcher{
@@ -114,7 +38,7 @@ func NewUludagFetcher() *UludagFetcher {
 }
 
 func (u *UludagFetcher) sendRequest(endpoint string, student Student, alternativeURL ...string) (string, error) {
-	url := "https://mobileservicev2.uludag.edu.tr/"
+	url := UludagMobileAPI
 	if len(alternativeURL) > 0 {
 		url = alternativeURL[0]
 	}
@@ -147,7 +71,7 @@ func (u *UludagFetcher) sendRequest(endpoint string, student Student, alternativ
 }
 
 func (u *UludagFetcher) StudentLogin(studentid, password string) (string, bool, error) {
-	req, err := http.NewRequest("POST", "https://mobileservicev2.uludag.edu.tr/login-student/studentlogin", nil)
+	req, err := http.NewRequest("POST", UludagMobileAPI+"login-student/studentlogin", nil)
 	if err != nil {
 		return "", false, err
 	}

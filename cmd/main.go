@@ -2,22 +2,18 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io"
 	"log/slog"
-	"maps"
 	"os"
 	"os/signal"
-	"slices"
-	"strconv"
-	"strings"
+	"path/filepath"
 	"time"
 	"uludag/database"
 	"uludag/otomasyon"
+	"uludag/task"
 	"uludag/telegram"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/rs/zerolog/log"
 )
 
 var port string
@@ -47,7 +43,7 @@ func main() {
 
 	database, err := database.NewDatabase("./data/users.db")
 	if err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("Failed to create database connection")
 	}
 
 	// Create data fetcher
@@ -61,19 +57,27 @@ func main() {
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create task scheduler")
+	}
+
+	// Create exam notifier task
+	oldExamsPath, err := filepath.Abs("./data/old_exams.txt")
+	if err != nil {
 		panic(err)
 	}
+	notifier := task.NewExamNotifier(database, fetcher, bot, oldExamsPath)
 
 	_, err = s.NewJob(
 		gocron.DurationJob(15*time.Second),
-		gocron.NewTask(newExamNotifier, database, fetcher, bot),
+		gocron.NewTask(notifier.Notifier),
 	)
 	if err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("Failed to create task")
 	}
 
 	// Start task scheduler
 	s.Start()
+	log.Info().Msg("Task scheduler started")
 
 	// Start webserver (non-blocking)
 	go func() {
@@ -89,84 +93,12 @@ func main() {
 	slog.Info("Server is shutdown!")
 
 	if err := s.Shutdown(); err != nil {
-		panic(err)
+		log.Error().Err(err).Msg("Failed to shutdown scheduler")
+	}
+
+	if err := database.Close(); err != nil {
+		log.Error().Err(err).Msg("Failed to close database connection")
 	}
 
 	server.Stop(context.Background())
-}
-
-func newExamNotifier(database *database.Database, fetcher *otomasyon.UludagFetcher, bot *telegram.TelegramBot) {
-	var old_exams *os.File
-	var err error
-
-	old_exams, err = os.OpenFile("./data/old_exams", os.O_RDWR, 0666)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			old_exams, err = os.Create("./data/old_exams")
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			panic(err)
-		}
-	}
-
-	// Fetch old exams
-	oldExamContents, err := io.ReadAll(old_exams)
-	if err != nil {
-		panic(err)
-	}
-
-	oldExamsMap := make(map[int]struct{})
-	for _, examID := range strings.Split(string(oldExamContents), "\n") {
-		examIDInt, err := strconv.Atoi(strings.Trim(examID, " "))
-		if err != nil {
-			continue
-		}
-
-		oldExamsMap[examIDInt] = struct{}{}
-	}
-
-	newExamsMap := maps.Clone(oldExamsMap)
-
-	// Fetch new exam results
-	users, err := database.AllUsers()
-	if err != nil {
-		panic(err)
-	}
-
-	for _, user := range users {
-		results, err := fetcher.GetExamResults(otomasyon.Student{
-			StudentID:           user.StudentID,
-			StudentSessionToken: user.StudentSessionToken,
-		})
-		if err != nil {
-			panic(err)
-		}
-
-		var newExamContents string
-		for _, result := range results {
-			if _, ok := oldExamsMap[result.ExamID]; !ok {
-				newExamsMap[result.ExamID] = struct{}{}
-				bot.SendMessage(telegram.MessageOptions{
-					Text:   "Yeni sınav sonuçları açıklanmış!. Açıklanan sınav: " + result.ExamName,
-					ChatID: user.ChatID,
-				})
-			}
-
-			newExamContents += fmt.Sprintf("%d\n", result.ExamID)
-		}
-	}
-
-	// Update old exams
-	newExamsKeys := slices.Collect(maps.Keys(newExamsMap))
-	var newExamsContent string
-
-	for _, examID := range newExamsKeys {
-		newExamsContent += fmt.Sprintf("%d\n", examID)
-	}
-
-	old_exams.Truncate(0)
-	old_exams.Seek(0, 0)
-	old_exams.Write([]byte(newExamsContent))
 }

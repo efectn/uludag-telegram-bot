@@ -12,12 +12,10 @@ Yapılacaklar:
 - [x] Kişisel bilgiler.
 - [x] Not kartının çekilmesi.
 - [ ] Ders seçimi.
-- [ ] Daha temiz bir yapı/mimari kurulması.
+- [x] Daha temiz bir yapı/mimari kurulması.
 - [ ] Bbolt yerine pebble/badger kullanmak (TTL ile).
 - [ ] Daha düzgün bir dependency injection.
-- [ ] Logging.
+- [x] Logging.
 - [ ] Testler.
 - [ ] CI ve fly.io entegrasyonu.
-- [ ] Belki tracing.
-- [ ] Daha düzgün bir error handling.
-- [ ] Daha düzgün bir config yapısı.
+- [x] Daha düzgün bir error handling.
