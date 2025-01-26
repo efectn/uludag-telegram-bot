@@ -16,9 +16,9 @@ import (
 
 type Server struct {
 	server        *http.Server
-	bot           *TelegramBot
-	fetcher       *otomasyon.UludagFetcher
-	database      *database.Database
+	bot           bot
+	fetcher       fetcher
+	database      db
 	TelegramToken string
 	Port          string
 	botID         string
@@ -56,7 +56,30 @@ type Update struct {
 	Message Message `json:"message"`
 }
 
-func NewServer(token string, port string, bot *TelegramBot, fetcher *otomasyon.UludagFetcher, database *database.Database, botID string) *Server {
+// Interfaces
+type bot interface {
+	SendMessage(options MessageOptions) error
+}
+
+type fetcher interface {
+	GetExamResults(student otomasyon.Student) ([]otomasyon.ExamResult, error)
+	GetExamSchedule(student otomasyon.Student) ([]otomasyon.Exam, error)
+	GetSyllabus(student otomasyon.Student) ([]otomasyon.SyllabusEntry, error)
+	GetStudentBranches(student otomasyon.Student) ([]otomasyon.StudentBranch, error)
+	GetGradeCard(student otomasyon.Student) ([]otomasyon.SemesterGrades, error)
+	GetStudentInfo(student otomasyon.Student) (otomasyon.Profile, error)
+	GetRefactoryList() (otomasyon.Refactory, error)
+	CheckStudentToken(student otomasyon.Student) (bool, error)
+	StudentLogin(username string, password string) (string, bool, error)
+}
+
+type db interface {
+	GetUser(chatID string) (database.User, error)
+	SaveUser(user database.User) error
+	DeleteUser(chatID string) error
+}
+
+func NewServer(token string, port string, bot bot, fetcher fetcher, database db, botID string) *Server {
 	return &Server{
 		TelegramToken: token,
 		Port:          port,

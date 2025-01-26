@@ -18,20 +18,20 @@ import (
 
 type ExamNotifier struct {
 	database *database.Database
-	fetcher  Fetcher
-	bot      Bot
+	fetcher  fetcher
+	bot      bot
 	location string
 }
 
-type Fetcher interface {
+type fetcher interface {
 	GetExamResults(student otomasyon.Student) ([]otomasyon.ExamResult, error)
 }
 
-type Bot interface {
+type bot interface {
 	SendMessage(options telegram.MessageOptions) error
 }
 
-func NewExamNotifier(database *database.Database, fetcher Fetcher, bot Bot, location string) *ExamNotifier {
+func NewExamNotifier(database *database.Database, fetcher fetcher, bot bot, location string) *ExamNotifier {
 	return &ExamNotifier{
 		database: database,
 		fetcher:  fetcher,

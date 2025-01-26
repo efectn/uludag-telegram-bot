@@ -14,7 +14,7 @@ Yapılacaklar:
 - [ ] Ders seçimi.
 - [x] Daha temiz bir yapı/mimari kurulması.
 - [ ] Bbolt yerine pebble/badger kullanmak (TTL ile).
-- [ ] Daha düzgün bir dependency injection.
+- [x] Daha düzgün bir dependency injection.
 - [x] Logging.
 - [ ] Testler.
 - [ ] CI ve fly.io entegrasyonu.
