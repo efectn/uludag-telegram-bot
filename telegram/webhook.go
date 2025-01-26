@@ -108,25 +108,17 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 
 		respond = "Başarıyla çıkış yapıldı\\!"
 	case "/sinavlar":
-		user, err := s.database.GetUser(chatID)
+		student, output := s.getStudent(chatID)
+		if student == nil && output != "" {
+			respond = output
+			break
+		}
+
+		results, err := s.fetcher.GetExamResults(*student)
 		if err != nil {
-			respond = "Önce giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
+			respond = "Sınav sonuçları alınırken bir hata oluştu."
 			break
 		}
-
-		student := otomasyon.Student{
-			StudentID:           user.StudentID,
-			StudentSessionToken: user.StudentSessionToken,
-		}
-
-		// Check token
-		ok, err := s.fetcher.CheckStudentToken(student)
-		if !ok || err != nil {
-			respond = "Token geçersiz. Giriş yapmalısınız. /login komutunu kullanarak giriş yapabilirsiniz."
-			break
-		}
-
-		results, err := s.fetcher.GetExamResults(student)
 
 		respond = "*Sınav Sonuçları*\n"
 		for _, result := range results {
@@ -142,6 +134,7 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 			"/profil: Öğrenci bilgilerini gösterir.\n" +
 			"/notkarti: Not kartını gösterir.\n" +
 			"/dersprogrami: Ders programını gösterir.\n" +
+			"/sinavprogrami: Sınav programını gösterir.\n" +
 			"/help: Yardım menüsünü gösterir."
 	case "/yemekhane":
 		respond = s.GetTodaysRefactoryMenu()
@@ -163,6 +156,14 @@ func (s *Server) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		respond = s.getSyllabus(*student)
+	case "/sinavprogrami":
+		student, output := s.getStudent(chatID)
+		if student == nil && output != "" {
+			respond = output
+			break
+		}
+
+		respond = s.GetExamSchedule(*student)
 	default:
 		respond = s.handleReplies(update.Message)
 	}
@@ -194,6 +195,41 @@ func (s *Server) Start() {
 
 func (s *Server) Stop(ctx context.Context) {
 	s.server.Shutdown(ctx)
+}
+
+func (s *Server) GetExamSchedule(student otomasyon.Student) string {
+	var respond string
+
+	exams, err := s.fetcher.GetExamSchedule(student)
+	if err != nil {
+		return "Sınav programı alınırken bir hata oluştu."
+	}
+
+	examIDs := []int{2, 3, 4, 10}
+	examNames := []string{"Vize", "Final", "Büt", "Ödev"}
+
+	respond = "*Sınav Programı*\n\n"
+	for i, name := range examNames {
+		examEntries := make([]otomasyon.Exam, 0, len(exams))
+		for _, entry := range exams {
+			if entry.ExamTypeID == examIDs[i] {
+				examEntries = append(examEntries, entry)
+			}
+		}
+
+		// Skip if there is no entry for that exam type
+		if len(examEntries) == 0 {
+			continue
+		}
+
+		respond += "*" + name + "*\n"
+		for _, entry := range examEntries {
+			respond += "- *" + entry.ExamName + "* - " + entry.ExamDate + " " + entry.ExamTime + ", " + entry.ExamDuration + " dakika\n"
+		}
+		respond += "\n"
+	}
+
+	return respond
 }
 
 func (s *Server) getStudent(chatID string) (*otomasyon.Student, string) {

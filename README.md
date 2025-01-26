@@ -8,7 +8,7 @@ Yapılacaklar:
 - [x] Sınavların listesinin alınabilmesi.
 - [x] Yemek listesinin çekilmesi.
 - [x] Ders programının çekilmesi.
-- [ ] Sınav takvimi.
+- [x] Sınav takvimi.
 - [x] Kişisel bilgiler.
 - [x] Not kartının çekilmesi.
 - [ ] Ders seçimi.

@@ -89,6 +89,15 @@ type SyllabusEntry struct {
 	ClassCode  string `json:"derslikKodu"`
 }
 
+type Exam struct {
+	ExamName     string `json:"sinavAdi"`
+	ExamDate     string `json:"tarih"`
+	ExamType     string `json:"sinavTipi"`
+	ExamTypeID   int    `json:"sinavTipiID"`
+	ExamTime     string `json:"sinavSaati"`
+	ExamDuration string `json:"sinavSure"`
+}
+
 func NewUludagFetcher() *UludagFetcher {
 	return &UludagFetcher{
 		client: &http.Client{
@@ -243,6 +252,20 @@ func (u *UludagFetcher) GetSyllabus(student Student) ([]SyllabusEntry, error) {
 	}
 
 	return syllabus, nil
+}
+
+func (u *UludagFetcher) GetExamSchedule(student Student) ([]Exam, error) {
+	body, err := u.sendRequest("student/examcalendar", student)
+	if err != nil {
+		return nil, err
+	}
+
+	var exams []Exam
+	if err := json.Unmarshal([]byte(body), &exams); err != nil {
+		return nil, err
+	}
+
+	return exams, nil
 }
 
 func (u *UludagFetcher) GetExamResults(student Student) ([]ExamResult, error) {
